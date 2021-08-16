@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Usage: pbar [-b <character_block>] [-c <0-7>] [-t <title>] [-s <total_size>] [<input_file>]
+
+print_block_times(){
+  # Usage: print_block_times <character block> <times to be printed>
+  ((${2}==0)) || eval printf '"${1}"%.0s' {1.."${2}"}
+}; export -f print_block_times
+
+while getopts b:c:t:s:u opt; do
+  case "${opt}" in
+    b) block="${OPTARG}";;
+    c) color="${OPTARG}";;
+    t) title="${OPTARG}";;
+    s) total="${OPTARG}";;
+  esac
+done
+input_file="${!OPTIND}"
+
+color="${color:=2}"
+block="${block:-$'\u2588'}"
+total="${total:=100}"
+
+progbar(){
+  tput civis
+  local num str title_wd="${#title}"
+  while read -r num str; do
+    if ((num<0)); then
+      tput cud 3; return 1
+    elif((num>total)); then
+      num=total
+    fi
+    
+    local term_wd="$(tput cols)"
+
+    if ((title_wd>0)); then  
+      local title_offset="$(((term_wd-title_wd)/2))"
+      print_block_times " " "${title_offset}"; echo -n "${title}"; print_block_times " " "${title_offset}"
+    fi
+    echo
+
+    local pbar_wd="$((term_wd-10))" # 2+    +2+4+2 spaces saved for \t\t.....\t\tXXX%\t\t
+    local buff="$(((pbar_wd*num)/total))" # =floor(number) not nint
+    echo -n '  '; tput setaf "${color}"
+    print_block_times "${block}" "${buff}"; tput sgr0; print_block_times " " "$((pbar_wd-buff))"
+    printf "%5d%%\n" "$((100*num/total))"
+    echo "  ${str}"
+    
+    if ((num!=total)); then
+      tput cuu 3
+    else
+      read -r -t1; echo -e "\n  ${REPLY}"
+      break
+    fi
+  done
+}; export -f progbar
+
+trap 'rm -f "${input_file}" 2>/dev/null; tput cnorm' exit
+
+if [[ -z "${input_file}" ]]; then
+  progbar
+elif [[ -p "${input_file}" ]]; then
+  progbar < "${input_file}"
+else
+  touch "${input_file}"
+  progbar < <(tail -f "${input_file}")
+fi
